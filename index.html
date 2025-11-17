@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fattarney</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- أيقونات Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <header>
+        <div class="header-title-container">
+            <h1 class="main-title">🍟 BESMELLA 🍟</h1>
+        </div>
+        <img src="60.png" alt="لوجو الشركة" class="logo">
+    </header>
+
+    <!-- شريط المعلومات الثابت أسفل الهيدر مباشرة -->
+    <div id="infoBar" class="info-bar">
+      <div class="info-section currency-section" id="currencySection" title="أسعار العملات">
+        <span class="icon"><i class="fa-solid fa-money-bill-trend-up"></i></span>
+        <!-- رابط بنك مصر بدلاً من الأسعار -->
+        <a href="https://www.banquemisr.com/Home/CAPITAL%20MARKETS/Exchange%20rates%20and%20currencies" target="_blank" id="bm-currency-link" style="color:inherit;text-decoration:underline;font-weight:bold;font-size:16px;">
+          أسعار العملات ببنك مصر
+        </a>
+      </div>
+      <div class="info-section weather-section" id="weatherSection" title="طقس القاهرة">
+        <span class="icon"><i class="fa-solid fa-cloud-sun"></i></span>
+        <span id="weatherLive">جاري التحميل...</span>
+      </div>
+      <!-- تم حذف قسم مواقيت الصلاة -->
+    </div>
+    
+    <main>
+        <section class="order-section">
+            <div class="name-section">
+                <input id="nameInput" class="name-input" type="text" placeholder="أدخل الإسم هنا" required autocomplete="off">
+                <div id="nameRequiredMsg">يجب إدخال الاسم أولاً!</div>
+                <!-- زر اختيار عدة أصناف دفعة واحدة بعد الاسم مباشرة -->
+                <button type="button" id="showMultiSelectBtn" class="multi-select-primary-btn">
+                    اختيار عدة أصناف دفعة واحدة
+                </button>
+            </div>
+            <form id="orderForm" class="order-form" autocomplete="off">
+                <div class="item-box">
+                    <div style="font-weight:bold; margin-bottom:6px; color:#444; font-size:16px;">
+                        أو اختيار صنف واحد
+                    </div>
+                    <select id="itemSelect" class="item-select" required>
+                        <!-- الأصناف ستملأ ديناميكياً من app.js -->
+                    </select>
+                    <label for="quantityInput">الكمية</label>
+                    <input id="quantityInput" class="quantity-input" type="number" min="1" value="" required>
+                    <div id="unitPriceHint" class="unit-price-hint"></div>
+                    <button type="button" id="addItemButton">إضافة الصنف للطلب</button>
+                </div>
+            </form>
+
+            <!-- واجهة الاختيار المتعدد -->
+            <div id="multiSelectSection" style="display:none;">
+                <h3>اختيار عدة أصناف وكمية كل صنف</h3>
+                <form id="multiSelectForm">
+                    <table class="multi-items-table">
+                        <thead>
+                            <tr>
+                                <th>الصنف</th>
+                                <th>الكمية</th>
+                                <th>سعر الوحدة</th>
+                            </tr>
+                        </thead>
+                        <tbody id="multiSelectItems"></tbody>
+                    </table>
+                    <button type="button" id="addMultiItemsButton">إضافة جميع الأصناف للطلب</button>
+                    <button type="button" id="cancelMultiSelectBtn">إلغاء</button>
+                </form>
+            </div>
+
+            <div id="orderSummary" class="order-summary" style="display:none;">
+                <h2>ملخص الطلب</h2>
+                <table id="summaryTable">
+                    <thead>
+                        <tr>
+                            <th>الصنف</th>
+                            <th>الكمية</th>
+                            <th>سعر الوحدة</th>
+                            <th>الإجمالي</th>
+                        </tr>
+                    </thead>
+                    <tbody id="summaryList"></tbody>
+                </table>
+                <div class="total-row">
+                    <span>إجمالي قيمة الطلب (بدون خدمة/توصيل): </span>
+                    <span id="orderTotal" style="font-weight:bold"></span> <span>جنيه</span>
+                </div>
+                <button id="editSummaryButton" type="button">تعديل</button>
+                <button id="confirmOrderButton" type="button">تأكيد الطلب</button>
+            </div>
+            <div id="currentOrder" class="current-order" style="display:none;">
+                <h2>الأصناف المختارة</h2>
+                <ul id="orderItemsList"></ul>
+                <button id="submitOrderButton" type="button">ملخص الطلب</button>
+            </div>
+        </section>
+        
+        <section class="orders-view-section">
+            <button id="viewOrdersButton">عرض الطلب المجمع</button>
+            <button id="viewIndividualOrdersButton">الطلبات الفردية</button>
+            <button id="exportExcelButton" style="margin:12px 0 8px 0; background:#1177dd; color:#fff; border-radius:12px; font-size:17px; padding:10px 22px; border:none; cursor:pointer;">
+                 Send To Excel
+            </button>
+        </section>
+        
+        <section id="ordersSection" style="display:none;">
+            <h2>الطلب المجمع</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>الصنف</th>
+                        <th>الكمية</th>
+                        <th>سعر الوحدة</th>
+                        <th>القيمة</th>
+                    </tr>
+                </thead>
+                <tbody id="ordersTableBody"></tbody>
+            </table>
+            <h2>أسماء من قام بالطلب</h2>
+            <div id="usersOutput"></div>
+        </section>
+        
+        <section id="individualOrdersSection" style="display:none;">
+            <h2>الطلبات الفردية</h2>
+            <div id="individualOrdersOutput"></div>
+        </section>
+
+        <!-- أزرار ونافذة دخول الأدمن وإضافة صنف جديد -->
+        <section id="adminSection" style="margin-top:30px;">
+            <button id="adminLoginBtn" style="display:inline-block;">تسجيل دخول الأدمن</button>
+            <button id="adminLogoutBtn" style="display:none;">تسجيل الخروج</button>
+            <button id="openAddItemModal" style="display:none;">إضافة صنف جديد</button>
+            <button id="editItemsBtn" style="display:none;">تعديل الأصناف</button>
+            <button id="clearAllOrdersButton" style="display:none;">مسح يدوي لكل الطلبات</button>
+            <button id="deleteOldOrdersBtn" style="display:none;background:#f5e609;color:#3b0101;padding:6px 18px;border:none;border-radius:15px;margin:3px 0 3px 8px;cursor:pointer;">
+                مسح الطلبات السابقة
+            </button>
+        </section>
+
+        <!-- نافذة تسجيل دخول الأدمن -->
+        <div id="adminLoginModal" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.33);z-index:1001;justify-content:center;align-items:center;">
+          <div style="background:#fff;padding:20px;border-radius:8px;max-width:320px;">
+            <h3>دخول الأدمن</h3>
+            <input type="email" id="adminEmail" placeholder="الإيميل" style="width:100%;margin-bottom:7px;">
+            <input type="password" id="adminPassword" placeholder="كلمة السر" style="width:100%;margin-bottom:7px;">
+            <div id="adminLoginMsg" style="color:red;min-height:18px;margin-bottom:7px;"></div>
+            <button id="adminLoginConfirmBtn">دخول</button>
+            <button id="adminLoginCancelBtn" style="margin-right:10px;">إلغاء</button>
+          </div>
+        </div>
+
+        <!-- نافذة منبثقة لإضافة صنف جديد (للأدمن فقط) -->
+        <div id="addItemModal" style="display:none; position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.33);z-index:1000;justify-content:center;align-items:center;">
+            <div style="background:#fff;padding:24px 18px;border-radius:8px;max-width:320px;box-shadow:0 0 8px #444;">
+                <h3 style="margin-top:0;">إضافة صنف جديد</h3>
+                <label>اسم الصنف:<br><input id="modalItemName" type="text" style="width:100%"></label><br>
+                <label>السعر:<br><input id="modalItemPrice" type="number" min="1" style="width:100%"></label><br>
+                <div style="margin:10px 0;color:red;" id="modalAddItemMsg"></div>
+                <button id="confirmAddItem">تأكيد الإضافة</button>
+                <button id="closeAddItemModal" style="margin-right:10px;">إلغاء</button>
+            </div>
+        </div>
+
+        <!-- نافذة تعديل الأصناف (جديدة) للأدمن -->
+        <div id="itemsEditModal" style="display:none; position:fixed; top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.33);z-index:1002;justify-content:center;align-items:center;">
+          <div style="background:#fff;padding:24px 18px;border-radius:8px;max-width:400px;width:95vw;box-shadow:0 0 8px #444;">
+            <h3 style="margin-top:0;text-align:center;">تعديل أسعار الأصناف</h3>
+            <div id="itemsEditList"></div>
+            <button id="closeItemsEditModal" style="margin-top:10px;">إغلاق</button>
+          </div>
+        </div>
+    </main>
+
+    <footer>
+        <div class="copyright">
+            <p>Copyright © 2024 GENIUS Tech All Rights Reserved</p>
+        </div>
+    </footer>
+
+    <!-- يجب وضع سكريبت مكتبة التصدير هنا أولاً -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
+    <!-- سكريبت شريط المعلومات -->
+    <script type="module" src="infoBar.js"></script>
+    <!-- سكريبت التطبيق الأصلي -->
+    <script type="module" src="app.js"></script>
+</body>
+</html>
