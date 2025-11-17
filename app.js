@@ -3,7 +3,7 @@ import {
     initializeApp 
 } from "https://www.gstatic.com/firebasejs/9.18.0/firebase-app.js";
 import { 
-    getFirestore, collection, addDoc, getDocs, deleteDoc, updateDoc, doc, query, orderBy
+    getFirestore, collection, addDoc, getDocs, deleteDoc, updateDoc, doc, query, orderBy, getDoc, setDoc
 } from "https://www.gstatic.com/firebasejs/9.18.0/firebase-firestore.js";
 import {
     getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged
@@ -25,6 +25,122 @@ const auth = getAuth(app);
 
 // بريد الأدمن الأساسي
 const ADMIN_EMAIL = "admin@hussein77.com";
+
+// ============ إدارة وقت إغلاق الطلبات ============
+const DEFAULT_CUTOFF_TIME = "08:30"; // الوقت الافتراضي لإغلاق الطلبات (8:30 صباحاً)
+let currentCutoffTime = DEFAULT_CUTOFF_TIME;
+let ordersOpen = true;
+let countdownInterval = null;
+
+// جلب وقت إغلاق الطلبات من Firebase
+async function loadCutoffTime() {
+    try {
+        const configDoc = await getDoc(doc(db, "config", "orderSettings"));
+        if (configDoc.exists()) {
+            const data = configDoc.data();
+            currentCutoffTime = data.cutoffTime || DEFAULT_CUTOFF_TIME;
+        } else {
+            // إنشاء المستند بالقيمة الافتراضية
+            await setDoc(doc(db, "config", "orderSettings"), {
+                cutoffTime: DEFAULT_CUTOFF_TIME
+            });
+            currentCutoffTime = DEFAULT_CUTOFF_TIME;
+        }
+    } catch (e) {
+        console.error("خطأ في تحميل وقت الإغلاق:", e);
+        currentCutoffTime = DEFAULT_CUTOFF_TIME;
+    }
+    updateCountdown();
+}
+
+// حفظ وقت إغلاق الطلبات في Firebase
+async function saveCutoffTime(newTime) {
+    try {
+        await setDoc(doc(db, "config", "orderSettings"), {
+            cutoffTime: newTime
+        });
+        currentCutoffTime = newTime;
+        return true;
+    } catch (e) {
+        console.error("خطأ في حفظ وقت الإغلاق:", e);
+        return false;
+    }
+}
+
+// دالة لحساب الوقت المتبقي حتى وقت الإغلاق
+function getTimeUntilCutoff() {
+    const now = new Date();
+    const egyptOffset = 2 * 60; // 2 hours in minutes
+    const egyptTime = new Date(now.getTime() + (egyptOffset - now.getTimezoneOffset()) * 60000);
+    
+    const [cutoffHours, cutoffMinutes] = currentCutoffTime.split(':').map(Number);
+    
+    const cutoffToday = new Date(egyptTime);
+    cutoffToday.setHours(cutoffHours, cutoffMinutes, 0, 0);
+    
+    const diff = cutoffToday - egyptTime;
+    
+    // إذا كان الوقت قد مضى اليوم، احسب للغد
+    if (diff < 0) {
+        const cutoffTomorrow = new Date(cutoffToday);
+        cutoffTomorrow.setDate(cutoffTomorrow.getDate() + 1);
+        const diffTomorrow = cutoffTomorrow - egyptTime;
+        return {
+            hours: Math.floor(diffTomorrow / (1000 * 60 * 60)),
+            minutes: Math.floor((diffTomorrow % (1000 * 60 * 60)) / (1000 * 60)),
+            seconds: Math.floor((diffTomorrow % (1000 * 60)) / 1000),
+            isOpen: false
+        };
+    }
+    
+    return {
+        hours: Math.floor(diff / (1000 * 60 * 60)),
+        minutes: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)),
+        seconds: Math.floor((diff % (1000 * 60)) / 1000),
+        isOpen: true
+    };
+}
+
+// تحديث العداد التنازلي
+function updateCountdown() {
+    const timerElement = document.getElementById('countdownTimer');
+    const countdownSection = document.getElementById('countdownSection');
+    const ordersClosedMsg = document.getElementById('ordersClosedMessage');
+    const orderSection = document.querySelector('.order-section');
+    
+    const timeInfo = getTimeUntilCutoff();
+    ordersOpen = timeInfo.isOpen;
+    
+    if (timeInfo.isOpen) {
+        const hoursText = timeInfo.hours > 0 ? `${timeInfo.hours} ساعة و` : '';
+        const minutesText = `${timeInfo.minutes} دقيقة و`;
+        const secondsText = `${timeInfo.seconds} ثانية`;
+        
+        timerElement.textContent = `${hoursText}${minutesText}${secondsText}`;
+        countdownSection.classList.remove('closed');
+        
+        if (ordersClosedMsg) ordersClosedMsg.style.display = 'none';
+        if (orderSection) orderSection.style.display = 'block';
+    } else {
+        timerElement.textContent = 'الطلبات مغلقة - افتح غداً';
+        countdownSection.classList.add('closed');
+        
+        if (ordersClosedMsg) ordersClosedMsg.style.display = 'block';
+        if (orderSection) orderSection.style.display = 'none';
+    }
+}
+
+// بدء العداد التنازلي
+function startCountdown() {
+    if (countdownInterval) clearInterval(countdownInterval);
+    updateCountdown();
+    countdownInterval = setInterval(updateCountdown, 1000);
+}
+
+// التحقق من إمكانية تقديم الطلبات
+function canSubmitOrder() {
+    return ordersOpen;
+}
 
 // قائمة الأصناف الافتراضية
 const fallbackItems = [
@@ -230,6 +346,10 @@ function isNameValid() {
 
 // إضافة صنف واحد للطلب (الطريقة القديمة)
 document.getElementById('addItemButton').onclick = async function() {
+    if (!canSubmitOrder()) {
+        alert("عذراً، لقد انتهى وقت استقبال الطلبات لليوم. يرجى المحاولة غداً.");
+        return;
+    }
     if (!isNameValid()) return;
     const select = document.getElementById('itemSelect');
     const quantityInput = document.getElementById('quantityInput');
@@ -313,6 +433,10 @@ document.getElementById('cancelMultiSelectBtn').onclick = function() {
 
 // إضافة جميع الأصناف المختارة دفعة واحدة
 document.getElementById('addMultiItemsButton').onclick = async function() {
+    if (!canSubmitOrder()) {
+        alert("عذراً، لقد انتهى وقت استقبال الطلبات لليوم. يرجى المحاولة غداً.");
+        return;
+    }
     if (!isNameValid()) return;
     let added = false;
     itemsList.forEach(item => {
@@ -383,6 +507,10 @@ document.getElementById('confirmOrderButton').onclick = submitOrder;
 
 // ============ إرسال أو تحديث الطلب في قاعدة البيانات ===========
 async function submitOrder() {
+    if (!canSubmitOrder()) {
+        alert("عذراً، لقد انتهى وقت استقبال الطلبات لليوم. يرجى المحاولة غداً.");
+        return;
+    }
     if (!isNameValid()) return;
     const name = document.getElementById("nameInput").value.trim();
     if (!name) {
@@ -787,6 +915,7 @@ function updateAdminUI(user) {
     const viewOrdersBtn = document.getElementById('viewOrdersButton');
     const clearBtn = document.getElementById('clearAllOrdersButton');
     const editItemsBtn = document.getElementById('editItemsBtn');
+    const editCutoffBtn = document.getElementById('editCutoffTimeBtn');
 
     viewOrdersBtn.style.display = 'inline-block';
     if (user && user.email === ADMIN_EMAIL) {
@@ -795,6 +924,7 @@ function updateAdminUI(user) {
         loginBtn.style.display = 'none';
         clearBtn.style.display = 'inline-block';
         editItemsBtn.style.display = 'inline-block';
+        editCutoffBtn.style.display = 'inline-block';
         deleteOldOrdersBtn.style.display = 'inline-block';
     } else {
         addBtn.style.display = 'none';
@@ -802,6 +932,7 @@ function updateAdminUI(user) {
         loginBtn.style.display = 'inline-block';
         clearBtn.style.display = 'none';
         editItemsBtn.style.display = 'none';
+        editCutoffBtn.style.display = 'none';
         deleteOldOrdersBtn.style.display = 'none';
     }
 }
@@ -991,9 +1122,46 @@ window.onload = async function() {
         document.getElementById("usersOutput").innerHTML = '';
     };
 
+    // ========== واجهة تعديل وقت إغلاق الطلبات (للأدمن) ==========
+    document.getElementById('editCutoffTimeBtn').onclick = function() {
+        document.getElementById('cutoffTimeInput').value = currentCutoffTime;
+        document.getElementById('cutoffTimeMsg').textContent = '';
+        document.getElementById('cutoffTimeModal').style.display = 'flex';
+    };
+
+    document.getElementById('closeCutoffTimeModal').onclick = function() {
+        document.getElementById('cutoffTimeModal').style.display = 'none';
+    };
+
+    document.getElementById('saveCutoffTimeBtn').onclick = async function() {
+        const newTime = document.getElementById('cutoffTimeInput').value;
+        const msg = document.getElementById('cutoffTimeMsg');
+        
+        if (!newTime) {
+            msg.style.color = 'red';
+            msg.textContent = 'يرجى اختيار وقت صحيح';
+            return;
+        }
+        
+        const success = await saveCutoffTime(newTime);
+        if (success) {
+            msg.style.color = 'green';
+            msg.textContent = 'تم حفظ الوقت الجديد بنجاح!';
+            setTimeout(() => {
+                document.getElementById('cutoffTimeModal').style.display = 'none';
+                startCountdown();
+            }, 1500);
+        } else {
+            msg.style.color = 'red';
+            msg.textContent = 'حدث خطأ أثناء الحفظ';
+        }
+    };
+
     await autoArchiveOldOrders();
     await loadItems();
     await loadUserOrderFromDB();
+    await loadCutoffTime();
+    startCountdown();
     clearInputs();
     showCurrentOrder();
 };
