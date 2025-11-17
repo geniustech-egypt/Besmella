@@ -140,6 +140,16 @@ h1 {
     background: linear-gradient(90deg,#141414 92%, #f30202 100%);
     color: #f8f244;
 }
+
+.countdown-section {
+    background: linear-gradient(90deg,#141414 92%, #f30202 100%);
+    color: #ff9800;
+}
+
+.countdown-section.closed {
+    background: linear-gradient(90deg,#3d0000 92%, #f30202 100%);
+    color: #ff4444;
+}
 .info-section:hover {
     box-shadow: 0 4px 12px #b3e8b0b1;
     filter: brightness(1.07);
@@ -153,6 +163,8 @@ h1 {
 }
 .currency-section .icon { color: #25f605; }
 .weather-section .icon  { color: #f8f244; }
+.countdown-section .icon { color: #ff9800; }
+.countdown-section.closed .icon { color: #ff4444; }
 
 .info-section:hover .icon {
     transform: scale(1.32) rotate(-8deg);

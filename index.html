@@ -29,10 +29,22 @@
         <span class="icon"><i class="fa-solid fa-cloud-sun"></i></span>
         <span id="weatherLive">جاري التحميل...</span>
       </div>
-      <!-- تم حذف قسم مواقيت الصلاة -->
+      <!-- قسم العد التنازلي لإغلاق الطلبات -->
+      <div class="info-section countdown-section" id="countdownSection" title="الوقت المتبقي لإغلاق الطلبات">
+        <span class="icon"><i class="fa-solid fa-clock"></i></span>
+        <span id="countdownTimer">جاري التحميل...</span>
+      </div>
     </div>
     
     <main>
+        <!-- رسالة إغلاق الطلبات -->
+        <div id="ordersClosedMessage" style="display:none; background:#ffebee; border:2px solid #f44336; border-radius:12px; padding:20px; margin-bottom:20px; text-align:center;">
+            <h2 style="color:#c62828; margin:0 0 10px 0;">
+                <i class="fa-solid fa-circle-exclamation"></i> تم إغلاق استقبال الطلبات
+            </h2>
+            <p style="font-size:18px; color:#d32f2f; margin:0;">لقد انتهى الوقت المحدد لإدخال الطلبات اليوم. يرجى المحاولة غداً.</p>
+        </div>
+
         <section class="order-section">
             <div class="name-section">
                 <input id="nameInput" class="name-input" type="text" placeholder="أدخل الإسم هنا" required autocomplete="off">
@@ -139,6 +151,7 @@
             <button id="adminLogoutBtn" style="display:none;">تسجيل الخروج</button>
             <button id="openAddItemModal" style="display:none;">إضافة صنف جديد</button>
             <button id="editItemsBtn" style="display:none;">تعديل الأصناف</button>
+            <button id="editCutoffTimeBtn" style="display:none;">تعديل وقت إغلاق الطلبات</button>
             <button id="clearAllOrdersButton" style="display:none;">مسح يدوي لكل الطلبات</button>
             <button id="deleteOldOrdersBtn" style="display:none;background:#f5e609;color:#3b0101;padding:6px 18px;border:none;border-radius:15px;margin:3px 0 3px 8px;cursor:pointer;">
                 مسح الطلبات السابقة
@@ -175,6 +188,19 @@
             <h3 style="margin-top:0;text-align:center;">تعديل أسعار الأصناف</h3>
             <div id="itemsEditList"></div>
             <button id="closeItemsEditModal" style="margin-top:10px;">إغلاق</button>
+          </div>
+        </div>
+
+        <!-- نافذة تعديل وقت إغلاق الطلبات (للأدمن) -->
+        <div id="cutoffTimeModal" style="display:none; position:fixed; top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.33);z-index:1003;justify-content:center;align-items:center;">
+          <div style="background:#fff;padding:24px 18px;border-radius:8px;max-width:380px;width:95vw;box-shadow:0 0 8px #444;">
+            <h3 style="margin-top:0;text-align:center;">تعديل وقت إغلاق الطلبات</h3>
+            <p style="text-align:center;font-size:15px;color:#666;margin-bottom:15px;">اختر الوقت اليومي لإغلاق استقبال الطلبات</p>
+            <label style="display:block;text-align:right;margin-bottom:8px;font-weight:bold;">الساعة:</label>
+            <input type="time" id="cutoffTimeInput" style="width:100%;padding:10px;font-size:16px;border:2px solid #ddd;border-radius:8px;margin-bottom:15px;" />
+            <div id="cutoffTimeMsg" style="min-height:20px;margin-bottom:10px;text-align:center;font-size:14px;"></div>
+            <button id="saveCutoffTimeBtn" style="width:100%;padding:12px;margin-bottom:8px;">حفظ الوقت الجديد</button>
+            <button id="closeCutoffTimeModal" style="width:100%;padding:10px;background:#999;">إلغاء</button>
           </div>
         </div>
     </main>
