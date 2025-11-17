@@ -20,85 +20,166 @@ const firebaseConfig = {
     measurementId: "G-RSF806GJYJ"
 };
 const app = initializeApp(firebaseConfig);
+
+// بعد تهيئة Firebase
 const db = getFirestore(app);
 const auth = getAuth(app);
 
+// اجعلهم متاحين في نافذة المتصفح للتشخيص من Console
+window.db = db;
+window.auth = auth;
+
+// دالة تشخيصية بسيطة للحصول على المستخدم الحالي وclaims
+window.debugAuth = async function() {
+  try {
+    const user = auth.currentUser;
+    console.log('currentUser =', user);
+    if (!user) {
+      console.warn('لا يوجد مستخدم مسجل حالياً. سجِّل الدخول ثم نفّذ window.debugAuth() مرة أخرى.');
+      return;
+    }
+    const token = await user.getIdTokenResult(true); // force refresh
+    console.log('idTokenResult.claims =', token.claims);
+    alert('انظر Console لرؤية تفاصيل الحساب والـ claims.');
+  } catch (e) {
+    console.error('debugAuth error:', e);
+  }
+};
 // بريد الأدمن الأساسي
 const ADMIN_EMAIL = "admin@hussein77.com";
 
-// ============ إدارة وقت إغلاق الطلبات ============
+// ============ إدارة وقت إغلاق الطلبات (محدث) ============
 const DEFAULT_CUTOFF_TIME = "08:30"; // الوقت الافتراضي لإغلاق الطلبات (8:30 صباحاً)
-let currentCutoffTime = DEFAULT_CUTOFF_TIME;
+let currentCutoffTime = DEFAULT_CUTOFF_TIME; // إما "HH:MM" أو {hour, minute}
 let ordersOpen = true;
 let countdownInterval = null;
 
-// جلب وقت إغلاق الطلبات من Firebase
+// helper: احصل على وقت مصر (Date) من تاريخ محلي (baseDate)
+function getEgyptTime(baseDate = new Date()) {
+  const egyptOffset = 2 * 60; // دقائق (UTC+2)
+  // تحويل من التوقيت المحلي إلى توقيت مصر:
+  // local -> UTC = baseDate.getTimezoneOffset() دقائق
+  // UTC -> Egypt = egyptOffset دقائق
+  const adjustMinutes = (baseDate.getTimezoneOffset() * 1) + egyptOffset;
+  return new Date(baseDate.getTime() + adjustMinutes * 60000);
+}
+
+// حساب الوقت المتبقي حتى الإغلاق (يدعم currentCutoffTime كسلسلة أو ككائن)
+function getTimeUntilCutoff() {
+    const nowLocal = new Date();
+    const now = getEgyptTime(nowLocal); // الوقت بمرجع توقيت مصر
+
+    // currentCutoffTime قد يكون "08:30" أو {hour, minute}
+    let cutoffHours = 8, cutoffMinutes = 30;
+    if (typeof currentCutoffTime === 'string') {
+      const parts = currentCutoffTime.split(':').map(x => Number(x));
+      cutoffHours = parts[0];
+      cutoffMinutes = parts[1] || 0;
+    } else if (typeof currentCutoffTime === 'object' && currentCutoffTime.hour != null) {
+      cutoffHours = Number(currentCutoffTime.hour);
+      cutoffMinutes = Number(currentCutoffTime.minute || 0);
+    }
+
+    const cutoffToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), cutoffHours, cutoffMinutes, 0, 0);
+    let diffMs = cutoffToday - now;
+    let isOpen = true;
+
+    if (diffMs <= 0) {
+      // إذا وقت الإغلاق لهذا اليوم قد مرّ، نحسب الفارق لغداً
+      const cutoffTomorrow = new Date(cutoffToday);
+      cutoffTomorrow.setDate(cutoffTomorrow.getDate() + 1);
+      diffMs = cutoffTomorrow - now;
+      isOpen = false; // الطلبات مغلقة الآن (تفتح غداً عند cutoff)
+    }
+
+    const totalSeconds = Math.floor(diffMs / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    return {
+      hours,
+      minutes,
+      seconds,
+      isOpen
+    };
+}
+
+// تحميل وقت الإغلاق — يقرأ من settings/closingTime أولاً ثم fallback إلى config/orderSettings
 async function loadCutoffTime() {
     try {
-        const configDoc = await getDoc(doc(db, "config", "orderSettings"));
-        if (configDoc.exists()) {
-            const data = configDoc.data();
-            currentCutoffTime = data.cutoffTime || DEFAULT_CUTOFF_TIME;
-        } else {
-            // إنشاء المستند بالقيمة الافتراضية
-            await setDoc(doc(db, "config", "orderSettings"), {
-                cutoffTime: DEFAULT_CUTOFF_TIME
-            });
-            currentCutoffTime = DEFAULT_CUTOFF_TIME;
+        // حاول قراءة settings/closingTime (المسار الذي تستخدمه القواعد والصورة)
+        const settingsDocRef = doc(db, "settings", "closingTime");
+        const snap1 = await getDoc(settingsDocRef);
+        if (snap1.exists()) {
+            const data = snap1.data();
+            if (typeof data.hour === 'number' && typeof data.minute === 'number') {
+                currentCutoffTime = { hour: data.hour, minute: data.minute };
+            } else if (typeof data.time === 'string') {
+                currentCutoffTime = data.time;
+            } else {
+                currentCutoffTime = DEFAULT_CUTOFF_TIME;
+            }
+            console.log('Loaded cutoff from settings/closingTime:', currentCutoffTime);
+            return;
         }
+
+        // fallback: قراءة config/orderSettings لو كان موجودًا (نسخة قديمة من الكود)
+        const configDocRef = doc(db, "config", "orderSettings");
+        const snap2 = await getDoc(configDocRef);
+        if (snap2.exists()) {
+            const data = snap2.data();
+            if (typeof data.cutoffTime === 'string') {
+                currentCutoffTime = data.cutoffTime;
+            } else if (typeof data.hour === 'number' && typeof data.minute === 'number') {
+                currentCutoffTime = { hour: data.hour, minute: data.minute };
+            } else {
+                currentCutoffTime = DEFAULT_CUTOFF_TIME;
+            }
+            console.log('Loaded cutoff from config/orderSettings (fallback):', currentCutoffTime);
+            return;
+        }
+
+        // لا توجد أي وثيقة: أنشئ settings/closingTime بالقيمة الافتراضية كأرقام
+        await setDoc(settingsDocRef, {
+            hour: Number(DEFAULT_CUTOFF_TIME.split(':')[0]),
+            minute: Number(DEFAULT_CUTOFF_TIME.split(':')[1])
+        }, { merge: true });
+        currentCutoffTime = DEFAULT_CUTOFF_TIME;
+        console.log('Created default settings/closingTime with', currentCutoffTime);
     } catch (e) {
         console.error("خطأ في تحميل وقت الإغلاق:", e);
         currentCutoffTime = DEFAULT_CUTOFF_TIME;
+    } finally {
+        // ابدأ/حدّث العداد بعد التحميل
+        updateCountdown();
     }
-    updateCountdown();
 }
 
-// حفظ وقت إغلاق الطلبات في Firebase
+// حفظ وقت الإغلاق: نكتب في settings/closingTime بصيغة رقمية hour/minute
 async function saveCutoffTime(newTime) {
     try {
-        await setDoc(doc(db, "config", "orderSettings"), {
-            cutoffTime: newTime
-        });
-        currentCutoffTime = newTime;
+        let hour = null, minute = 0;
+        if (typeof newTime === 'string') {
+            const parts = newTime.split(':').map(x => Number(x));
+            hour = parts[0]; minute = parts[1] || 0;
+        } else if (typeof newTime === 'object' && newTime.hour != null) {
+            hour = Number(newTime.hour);
+            minute = Number(newTime.minute || 0);
+        } else {
+            throw new Error('Invalid time format');
+        }
+
+        const settingsDocRef = doc(db, "settings", "closingTime");
+        await setDoc(settingsDocRef, { hour, minute }, { merge: true });
+
+        currentCutoffTime = { hour, minute };
+        console.log('Saved cutoff to settings/closingTime:', currentCutoffTime);
         return true;
     } catch (e) {
         console.error("خطأ في حفظ وقت الإغلاق:", e);
         return false;
     }
-}
-
-// دالة لحساب الوقت المتبقي حتى وقت الإغلاق
-function getTimeUntilCutoff() {
-    const now = new Date();
-    const egyptOffset = 2 * 60; // 2 hours in minutes
-    const egyptTime = new Date(now.getTime() + (egyptOffset - now.getTimezoneOffset()) * 60000);
-    
-    const [cutoffHours, cutoffMinutes] = currentCutoffTime.split(':').map(Number);
-    
-    const cutoffToday = new Date(egyptTime);
-    cutoffToday.setHours(cutoffHours, cutoffMinutes, 0, 0);
-    
-    const diff = cutoffToday - egyptTime;
-    
-    // إذا كان الوقت قد مضى اليوم، احسب للغد
-    if (diff < 0) {
-        const cutoffTomorrow = new Date(cutoffToday);
-        cutoffTomorrow.setDate(cutoffTomorrow.getDate() + 1);
-        const diffTomorrow = cutoffTomorrow - egyptTime;
-        return {
-            hours: Math.floor(diffTomorrow / (1000 * 60 * 60)),
-            minutes: Math.floor((diffTomorrow % (1000 * 60 * 60)) / (1000 * 60)),
-            seconds: Math.floor((diffTomorrow % (1000 * 60)) / 1000),
-            isOpen: false
-        };
-    }
-    
-    return {
-        hours: Math.floor(diff / (1000 * 60 * 60)),
-        minutes: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)),
-        seconds: Math.floor((diff % (1000 * 60)) / 1000),
-        isOpen: true
-    };
 }
 
 // تحديث العداد التنازلي
@@ -1134,41 +1215,97 @@ window.onload = async function() {
         document.getElementById("usersOutput").innerHTML = '';
     };
 
-    // ========== واجهة تعديل وقت إغلاق الطلبات (للأدمن) ==========
-    document.getElementById('editCutoffTimeBtn').onclick = function() {
-        document.getElementById('cutoffTimeInput').value = currentCutoffTime;
-        document.getElementById('cutoffTimeMsg').textContent = '';
-        document.getElementById('cutoffTimeModal').style.display = 'flex';
-    };
+// ========== واجهة تعديل وقت إغلاق الطلبات (للأدمن) ==========
+document.getElementById('editCutoffTimeBtn').onclick = function() {
+    // إذا كانت القيمة ككائن حولها لـ "HH:MM"
+    if (typeof currentCutoffTime === 'object' && currentCutoffTime.hour != null) {
+        const hh = String(currentCutoffTime.hour).padStart(2, '0');
+        const mm = String(currentCutoffTime.minute).padStart(2, '0');
+        document.getElementById('cutoffTimeInput').value = `${hh}:${mm}`;
+    } else {
+        document.getElementById('cutoffTimeInput').value = currentCutoffTime || DEFAULT_CUTOFF_TIME;
+    }
+    document.getElementById('cutoffTimeMsg').textContent = '';
+    document.getElementById('cutoffTimeModal').style.display = 'flex';
+};
 
-    document.getElementById('closeCutoffTimeModal').onclick = function() {
-        document.getElementById('cutoffTimeModal').style.display = 'none';
-    };
+document.getElementById('closeCutoffTimeModal').onclick = function() {
+    document.getElementById('cutoffTimeModal').style.display = 'none';
+};
 
-    document.getElementById('saveCutoffTimeBtn').onclick = async function() {
-        const newTime = document.getElementById('cutoffTimeInput').value;
-        const msg = document.getElementById('cutoffTimeMsg');
-        
-        if (!newTime) {
+// دالة تحقق من صلاحية الأدمن قبل الحفظ ثم تحفظ الوقت
+async function saveCutoffTimeChecked(newTime) {
+    const msg = document.getElementById('cutoffTimeMsg');
+
+    // validate format HH:MM (خفيفة)
+    if (!/^\d{1,2}:\d{2}$/.test(newTime)) {
+        msg.style.color = 'red';
+        msg.textContent = 'تنسيق الوقت غير صحيح. استخدم مثال: 08:30';
+        return false;
+    }
+
+    // تأكد أن المستخدم مسجّل
+    const user = auth.currentUser;
+    if (!user) {
+        msg.style.color = 'red';
+        msg.textContent = 'يجب تسجيل الدخول كأدمن لحفظ الوقت.';
+        return false;
+    }
+
+    try {
+        // حدِّث التوكن ليحمل أي custom claims جديدة
+        const idTokenResult = await user.getIdTokenResult(true);
+        const claims = idTokenResult.claims || {};
+        // التحقق من admin عبر claim أو البريد كخيار مؤقت
+        const isAdmin = (claims.admin === true) || (user.email === ADMIN_EMAIL);
+        if (!isAdmin) {
             msg.style.color = 'red';
-            msg.textContent = 'يرجى اختيار وقت صحيح';
-            return;
+            msg.textContent = 'ليس لديك صلاحية تعديل وقت الإغلاق.';
+            return false;
         }
-        
+
+        // حافظ (الدالة saveCutoffTime تكتب الآن إلى settings/closingTime)
         const success = await saveCutoffTime(newTime);
         if (success) {
             msg.style.color = 'green';
             msg.textContent = 'تم حفظ الوقت الجديد بنجاح!';
+            // انعكس التغيير محلياً وابدأ/أعد تشغيل العداد
+            // currentCutoffTime تم تحديثه داخل saveCutoffTime
             setTimeout(() => {
                 document.getElementById('cutoffTimeModal').style.display = 'none';
                 startCountdown();
-            }, 1500);
+            }, 700);
+            return true;
         } else {
             msg.style.color = 'red';
-            msg.textContent = 'حدث خطأ أثناء الحفظ';
+            msg.textContent = 'حدث خطأ أثناء الحفظ. راجع Console.';
+            return false;
         }
-    };
+    } catch (e) {
+        console.error('خطأ أثناء محاولة الحفظ مع الفحص:', e);
+        msg.style.color = 'red';
+        if (e.code === 'permission-denied') {
+            msg.textContent = 'فشل الحفظ: لا تملك صلاحية إجراء هذه العملية.';
+        } else {
+            msg.textContent = 'فشل غير متوقع أثناء الحفظ.';
+        }
+        return false;
+    }
+}
 
+document.getElementById('saveCutoffTimeBtn').onclick = async function() {
+    const newTime = document.getElementById('cutoffTimeInput').value;
+    const msg = document.getElementById('cutoffTimeMsg');
+
+    if (!newTime) {
+        msg.style.color = 'red';
+        msg.textContent = 'يرجى اختيار وقت صحيح';
+        return;
+    }
+
+    // استدعاء الدالة المحمية
+    await saveCutoffTimeChecked(newTime);
+};
     await autoArchiveOldOrders();
     await loadItems();
     await loadUserOrderFromDB();
@@ -1176,13 +1313,8 @@ window.onload = async function() {
     startCountdown();
     clearInputs();
     showCurrentOrder();
-};
-window.bulkAddItems = async function(items){
-  for (const item of items) {
-    await addDoc(collection(db, "items"), item);
-  }
-  alert("تمت الإضافة!");
-}
+}; // <-- هذا يغلق window.onload = async function() {
+
 
 // ========== زر تصدير الطلبات الفردية للإكسيل ==========
 document.getElementById('exportExcelButton').onclick = async function() {
@@ -1325,4 +1457,5 @@ document.getElementById('exportExcelButton').onclick = async function() {
     XLSX.utils.book_append_sheet(wb, ws, "الطلبيات الفردية");
 
     XLSX.writeFile(wb, "individual_orders_full.xlsx", { bookType: "xlsx", type: "binary", cellStyles: true, cellDates: true, bom: true });
+
 };
