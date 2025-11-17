@@ -400,6 +400,10 @@ document.getElementById('addItemButton').onclick = async function() {
 
 // ========== واجهة الاختيار المتعدد ==========
 function showMultiSelectSection() {
+    if (!canSubmitOrder()) {
+        alert("عذراً، لقد انتهى وقت استقبال الطلبات لليوم. يرجى المحاولة غداً.");
+        return;
+    }
     if (!isNameValid()) return;
     const section = document.getElementById('multiSelectSection');
     const tbody = document.getElementById('multiSelectItems');
@@ -468,6 +472,10 @@ document.getElementById('addMultiItemsButton').onclick = async function() {
 };
 
 document.getElementById('submitOrderButton').onclick = function() {
+    if (!canSubmitOrder()) {
+        alert("عذراً، لقد انتهى وقت استقبال الطلبات لليوم. يرجى المحاولة غداً.");
+        return;
+    }
     if (!isNameValid()) return;
     if (currentOrder.length === 0) {
         alert("يرجى إضافة صنف واحد على الأقل.");
@@ -526,6 +534,10 @@ async function submitOrder() {
 }
 
 async function saveOrderToFirestore(showAlertAfter = false) {
+    if (!canSubmitOrder()) {
+        alert("عذراً، لقد انتهى وقت استقبال الطلبات لليوم. يرجى المحاولة غداً.");
+        return;
+    }
     const name = document.getElementById("nameInput").value.trim();
     let orderObj = { name };
     currentOrder.forEach(item => {
